@@ -1,0 +1,4 @@
+bin/
+pkg/
+REVISION.json
+config.json
