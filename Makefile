@@ -1,13 +1,8 @@
 GOPATH := ${PWD}
 
 define reset
-	# @rm -f src/static/compiled*.go
 	@rm -rf bin
-	# @rm -rf deploy
 	@rm -rf pkg
-	@mkdir -p bin
-	# @mkdir -p deploy
-	@mkdir -p pkg
 endef
 
 define fmt
@@ -18,7 +13,7 @@ endef
 define build
 	@echo 'Building...'
 
-	GOOS=$(OS) GOARCH=$(ARCH) go install pegasus
+	go install pegasus
 endef
 
 dev:
