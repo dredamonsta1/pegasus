@@ -135,7 +135,25 @@ func (t *rawDuration) UnmarshalJSON(in []byte) (err error) {
 }
 
 func (r Run) String() string {
-	return fmt.Sprintf(`start: %s; distance: %0.2fmi, duration: %s, calories: %d`, r.StartTime.Format("1/2/2006 3:04 PM MST"), r.Distance.Miles(), r.Duration, r.Calories)
+	return fmt.Sprintf(`start: %s; distance: %0.2fmi, duration: %s, pace: %s min/mi, speed: %0.2f mph, calories: %d`, r.StartTime.Format("1/2/2006 3:04 PM MST"), r.Distance.Miles(), r.Duration, r.PaceMi(), r.SpeedMi(), r.Calories)
+}
+
+// Returns the average pace of the run in min/mi
+func (r Run) PaceMi() time.Duration {
+	return time.Duration(int64(float64(r.Duration) / r.Distance.Miles()))
+}
+
+// Returns the average pace of the run in min/km
+func (r Run) Pace() time.Duration {
+	return time.Duration(int64(float64(r.Duration) / float64(r.Distance)))
+}
+
+func (r Run) Speed() float64 {
+	return float64(r.Distance) / (float64(r.Duration) / (1e9 * 60 * 60))
+}
+
+func (r Run) SpeedMi() float64 {
+	return float64(r.Distance.Miles()) / (float64(r.Duration) / (1e9 * 60 * 60))
 }
 
 func New(app_id string, access_token string) Importer {
