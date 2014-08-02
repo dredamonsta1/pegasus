@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -17,143 +16,6 @@ type Importer struct {
 	AppID       string
 
 	client *http.Client
-}
-
-type rawDuration time.Duration
-type rawTimestamp struct {
-	Timestamp string
-	Timezone  string
-}
-type rawTag struct {
-	Type  string `json:"tagType"`
-	Value string `json:"tagValue"`
-}
-
-type Tag struct {
-	Name  string
-	Value string
-}
-
-type rawMetricSummary struct {
-	Calories int64       `json:"calories"`
-	Fuel     int64       `json:"fuel"`
-	Distance float64     `json:"distance"`
-	Steps    int64       `json:"steps"`
-	Duration rawDuration `json:"duration"`
-}
-
-type rawActivity struct {
-	ActivityID   string `json:"activityId"`
-	ActivityType string `json:"activityType"`
-	Status       string `json:"status"`
-	Device       string `json:"device"`
-	StartTime    string `json:"startTime"`
-	Timezone     string `json:"activityTimeZone"`
-
-	MetricSummary rawMetricSummary `json:"metricSummary"`
-
-	Tags []rawTag `json:"tags"`
-}
-
-type aggregateActivities struct {
-	Data []rawActivity `json:"data"`
-}
-
-type Run struct {
-	ID        string
-	StartTime time.Time
-	Status    string
-	Device    string
-
-	Calories int64
-	Steps    int64
-	Fuel     int64
-	Distance Distance
-	Duration time.Duration
-
-	Tags []Tag
-}
-
-type Distance float64
-
-func (d Distance) Kilometers() float64 {
-	return float64(d)
-}
-
-func (d Distance) Miles() float64 {
-	return float64(d) / 1.60934
-}
-
-func (t rawTimestamp) Time(tz string) (time.Time, error) {
-	in_tz, err := time.LoadLocation(t.Timezone)
-	if err != nil {
-		return time.Time{}, err
-	}
-
-	out_tz, err := time.LoadLocation(tz)
-	if err != nil {
-		return time.Time{}, err
-	}
-
-	v, err := time.Parse(`2006-01-02T15:04:05Z`, t.Timestamp)
-	if err != nil {
-		return time.Time{}, err
-	}
-
-	v = v.In(in_tz)
-
-	u := time.Date(v.Year(), v.Month(), v.Day(), v.Hour(), v.Minute(), v.Second(), 0, out_tz)
-
-	return u, nil
-}
-
-func (t *rawDuration) UnmarshalJSON(in []byte) (err error) {
-	var str string
-	err = json.Unmarshal(in, &str)
-	if err != nil {
-		return err
-	}
-
-	frac := strings.Split(str, ".")
-	whole := strings.Split(frac[0], ":")
-
-	if len(frac) == 1 {
-		frac[1] = "0"
-	}
-
-	if len(whole) != 3 {
-		return fmt.Errorf("Invalid duration")
-	}
-
-	v, err := time.ParseDuration(fmt.Sprintf(`%sh%sm%ss.%sms`, whole[0], whole[1], whole[2], frac[1]))
-	if err != nil {
-		return err
-	}
-
-	*t = rawDuration(v)
-	return nil
-}
-
-func (r Run) String() string {
-	return fmt.Sprintf(`start: %s; distance: %0.2fmi, duration: %s, pace: %s min/mi, speed: %0.2f mph, calories: %d`, r.StartTime.Format("1/2/2006 3:04 PM MST"), r.Distance.Miles(), r.Duration, r.PaceMi(), r.SpeedMi(), r.Calories)
-}
-
-// Returns the average pace of the run in min/mi
-func (r Run) PaceMi() time.Duration {
-	return time.Duration(int64(float64(r.Duration) / r.Distance.Miles()))
-}
-
-// Returns the average pace of the run in min/km
-func (r Run) Pace() time.Duration {
-	return time.Duration(int64(float64(r.Duration) / float64(r.Distance)))
-}
-
-func (r Run) Speed() float64 {
-	return float64(r.Distance) / (float64(r.Duration) / (1e9 * 60 * 60))
-}
-
-func (r Run) SpeedMi() float64 {
-	return float64(r.Distance.Miles()) / (float64(r.Duration) / (1e9 * 60 * 60))
 }
 
 func New(app_id string, access_token string) Importer {
@@ -168,63 +30,158 @@ func New(app_id string, access_token string) Importer {
 
 func (i *Importer) Import() {
 	log.Println("Starting import")
-	body, _, err := i.request("/me/sport/activities", url.Values{"count": []string{"50"}})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading runs: %s", err.Error())
-	}
-
-	out := bytes.Buffer{}
-	json.Indent(&out, body.Bytes(), "", "  ")
-	fmt.Println(out.String())
-
-	activities := aggregateActivities{}
-	err = json.Unmarshal(body.Bytes(), &activities)
-
-	log.Printf("%d valid activities found, converting to runs", len(activities.Data))
 
 	runs := make([]Run, 0)
-	for _, v := range activities.Data {
-		if v.ActivityID != "" && v.ActivityType == "RUN" {
-			run := Run{
-				ID:     v.ActivityID,
-				Status: v.Status,
-				Device: v.Device,
 
-				Calories: v.MetricSummary.Calories,
-				Distance: Distance(v.MetricSummary.Distance),
-				Duration: time.Duration(v.MetricSummary.Duration),
-				Fuel:     v.MetricSummary.Fuel,
-				Steps:    v.MetricSummary.Steps,
+	inc := 50
+	offset := 1
 
-				Tags: []Tag{},
-			}
-
-			st, err := rawTimestamp{v.StartTime, v.Timezone}.Time("America/New_York")
-			if err == nil {
-				run.StartTime = st
-			} else {
-				fmt.Println(err)
-			}
-
-			for _, t := range v.Tags {
-				run.Tags = append(run.Tags, Tag{
-					t.Type,
-					t.Value,
-				})
-			}
-
-			runs = append(runs, run)
+	for {
+		body, _, err := i.request("/me/sport/activities", url.Values{"count": []string{fmt.Sprintf(`%d`, inc)}, "offset": []string{fmt.Sprintf(`%d`, offset)}})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading runs: %s", err.Error())
 		}
+
+		activities := struct {
+			Data []struct {
+				ActivityID   string `json:"activityId"`
+				ActivityType string `json:"activityType"`
+				Status       string `json:"status"`
+				Device       string `json:"device"`
+				StartTime    string `json:"startTime"`
+				Timezone     string `json:"activityTimeZone"`
+
+				MetricSummary struct {
+					Calories int64       `json:"calories"`
+					Fuel     int64       `json:"fuel"`
+					Distance float64     `json:"distance"`
+					Steps    int64       `json:"steps"`
+					Duration rawDuration `json:"duration"`
+				} `json:"metricSummary"`
+
+				Tags []struct {
+					Type  string `json:"tagType"`
+					Value string `json:"tagValue"`
+				} `json:"tags"`
+			} `json:"data"`
+
+			Paging struct {
+				Next string `json:"next"`
+				Prev string `json:"previous"`
+			} `json:"paging"`
+		}{}
+		err = json.Unmarshal(body.Bytes(), &activities)
+
+		if len(activities.Data) == 0 {
+			break
+		}
+
+		log.Printf("%d valid activities found, converting to runs (count: %d, offset: %d)", len(activities.Data), inc, offset)
+
+		num := 0
+		for _, v := range activities.Data {
+			if v.ActivityID != "" && v.ActivityType == "RUN" {
+				run := Run{
+					ID:     v.ActivityID,
+					Status: v.Status,
+					Device: v.Device,
+
+					Calories: v.MetricSummary.Calories,
+					Distance: Distance(v.MetricSummary.Distance),
+					Duration: time.Duration(v.MetricSummary.Duration),
+					Fuel:     v.MetricSummary.Fuel,
+					Steps:    v.MetricSummary.Steps,
+
+					Tags: []Tag{},
+				}
+
+				st, err := rawTimestamp{v.StartTime, v.Timezone}.Time("America/New_York")
+				if err == nil {
+					run.StartTime = st
+				} else {
+					fmt.Println(err)
+				}
+
+				for _, t := range v.Tags {
+					run.Tags = append(run.Tags, Tag{
+						t.Type,
+						t.Value,
+					})
+				}
+
+				num += 1
+				go func(run Run) {
+					body, _, err := i.request("/me/sport/activities/"+run.ID+"/gps", url.Values{})
+
+					response := struct {
+						ElevationLoss  float64 `json:"elevationLoss"`
+						ElevationGain  float64 `json:"elevationGain"`
+						ElevationMax   float64 `json:"elevationMax"`
+						ElevationMin   float64 `json:"elevationMin"`
+						IntervalMetric float64 `json:"intervalMetric"`
+						IntervalUnit   string  `json:"intervalUnit"`
+						Waypoints      []struct {
+							Latitude  float64 `json:"latitude"`
+							Longitude float64 `json:"longitude"`
+							Elevation float64 `json:"elevation"`
+						} `json:"waypoints"`
+					}{}
+
+					if err != nil {
+						num -= 1
+						return
+					}
+
+					err = json.Unmarshal(body.Bytes(), &response)
+					if err == nil {
+						run.GPS.ElevationLoss = response.ElevationLoss
+						run.GPS.ElevationGain = response.ElevationGain
+
+						switch response.IntervalUnit {
+						case "SEC":
+							run.GPS.Interval = time.Duration(response.IntervalMetric) * time.Second
+						}
+
+						waypoints := []Waypoint{}
+						for _, w := range response.Waypoints {
+							waypoints = append(waypoints, Waypoint{
+								Latitude:  w.Latitude,
+								Longitude: w.Longitude,
+								Elevation: w.Elevation,
+							})
+						}
+						run.GPS.Waypoints = waypoints
+					}
+
+					runs = append(runs, run)
+					num -= 1
+				}(run)
+			}
+		}
+
+		for num > 0 {
+			time.Sleep(500 * time.Millisecond)
+			// log.Printf("Waiting on %d tasks", num)
+		}
+
+		// for _, run := range runs {
+		// 	log.Println(run.String())
+		// }
+
+		offset += inc
 	}
 
-	for _, v := range runs {
-		fmt.Println(v.String())
-	}
+	log.Printf("%d runs saved", len(runs))
 
-	activities = aggregateActivities{}
+	js, err := json.Marshal(runs)
+	if err == nil {
+		fmt.Println(string(js))
+	} else {
+		fmt.Println(err)
+	}
 }
 
-func (i *Importer) request(query string, params url.Values) (body *bytes.Buffer, resp *http.Response, err error) {
+func (i *Importer) request(query string, params url.Values) (*bytes.Buffer, *http.Response, error) {
 
 	params.Set("access_token", i.AccessToken)
 
@@ -239,10 +196,36 @@ func (i *Importer) request(query string, params url.Values) (body *bytes.Buffer,
 	}
 	req.Header.Add("Accept", "application/json")
 
-	resp, err = i.client.Do(req)
+	resp, err := i.client.Do(req)
+	if err != nil {
+		fmt.Println(err)
+		return nil, resp, err
+	}
 
-	body = &bytes.Buffer{}
+	body := new(bytes.Buffer)
 	body.ReadFrom(resp.Body)
 
-	return
+	return body, resp, err
+}
+
+func (this Waypoint) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf(`[%f, %f, %f]`, this.Latitude, this.Longitude, this.Elevation)), nil
+}
+
+func (this *Waypoint) UnmarshalJSON(in []byte) error {
+	raw := []float64{}
+	err := json.Unmarshal(in, &raw)
+	if err != nil {
+		return err
+	}
+
+	if len(raw) != 3 {
+		return fmt.Errorf("Invalid waypoint: %s", string(in))
+	}
+
+	this.Latitude = raw[0]
+	this.Longitude = raw[1]
+	this.Elevation = raw[2]
+
+	return nil
 }

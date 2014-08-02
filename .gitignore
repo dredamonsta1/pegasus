@@ -1,4 +1,6 @@
 bin/
 pkg/
+src/github.com/
 REVISION.json
 config.json
+output.json

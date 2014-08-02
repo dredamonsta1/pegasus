@@ -22,3 +22,11 @@ dev:
 	@$(build)
 
 default: dev
+
+setup:
+	@echo 'Clearing src/github.com...'
+	@rm -rf src/github.com/
+
+	@echo 'Getting dependencies...'
+	@echo '  github.com/jimmysawczuk/go-config'
+	@go get -u github.com/jimmysawczuk/go-config

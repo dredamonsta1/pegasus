@@ -1,13 +1,18 @@
 package main
 
 import (
-	"importer"
+	"github.com/jimmysawczuk/go-config"
 
-	// "fmt"
+	"importer"
 )
 
+func init() {
+	config.Add(config.String("api-secret", "", "Nike+ API secret", true))
+	config.Build()
+}
+
 func main() {
-	i := importer.New("", "5e366cacfa97c9a0abd76ca5ece78aeb")
+	i := importer.New("", config.Require("api-secret").String())
 
 	i.Import()
 }
