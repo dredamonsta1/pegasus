@@ -185,7 +185,7 @@ func (i *Importer) request(query string, params url.Values) (*bytes.Buffer, *htt
 
 	params.Set("access_token", i.AccessToken)
 
-	req, err := http.NewRequest("GET", "https://api.nike.com"+query, nil)
+	req, err := http.NewRequest("GET", "https://api.nike.com/v1"+query, nil)
 
 	if len(params) > 0 {
 		req.URL.RawQuery = params.Encode()
