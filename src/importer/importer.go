@@ -11,33 +11,99 @@ import (
 	"time"
 )
 
+type runFile struct {
+	Runs    []Run     `json:"runs"`
+	Updated time.Time `json:"updated"`
+}
+
 type Importer struct {
 	AccessToken string
 	AppID       string
+	OutputFile  string
 
 	client *http.Client
 }
 
-func New(app_id string, access_token string) Importer {
+func New(app_id string, access_token string, filename string) Importer {
 	i := Importer{
 		AccessToken: access_token,
 		AppID:       app_id,
+		OutputFile:  filename,
 		client:      &http.Client{},
 	}
 
 	return i
 }
 
+func (i *Importer) loadFromFile() (input runFile, err error) {
+	file_read, err := os.Open(i.OutputFile)
+	if err != nil {
+		log.Printf("Error opening output file %s: %s", i.OutputFile, err)
+		return
+	}
+
+	defer file_read.Close()
+
+	stat, err := file_read.Stat()
+	if err != nil {
+		log.Printf("Error stat-ing output file %s: %s", i.OutputFile, err)
+		return
+	}
+
+	contents := make([]byte, stat.Size())
+	_, err = file_read.Read(contents)
+	if err != nil {
+		log.Printf("Error reading output file %s: %s", i.OutputFile, err)
+		return
+	}
+
+	err = json.Unmarshal(contents, &input)
+	if err != nil {
+		log.Printf("Error unmarshaling input file, starting from scratch")
+		log.Printf("%s", err)
+		return
+	}
+
+	log.Printf("%d runs loaded from input file %s (current as of %s)", len(input.Runs), i.OutputFile, input.Updated.Format("2006-01-02 15:04:05 -0700"))
+	return input, nil
+}
+
 func (i *Importer) Import() {
 	log.Println("Starting import")
 
+	input, err := i.loadFromFile()
 	runs := make([]Run, 0)
 
-	inc := 50
+	since := time.Time{}
+	until := time.Time{}
+	if err == nil {
+		runs = input.Runs
+		since = input.Updated.AddDate(0, 0, -1)
+		until = time.Now().AddDate(0, 0, 1)
+	}
+
+	// debug
+	since = time.Now().AddDate(0, -1, 0)
+	until = time.Now()
+
+	inc := 5
 	offset := 1
 
 	for {
-		body, _, err := i.request("/me/sport/activities", url.Values{"count": []string{fmt.Sprintf(`%d`, inc)}, "offset": []string{fmt.Sprintf(`%d`, offset)}})
+		params := url.Values{
+			"count":  []string{fmt.Sprintf(`%d`, inc)},
+			"offset": []string{fmt.Sprintf(`%d`, offset)},
+		}
+
+		if !since.IsZero() {
+			params["startDate"] = []string{since.Format("2006-01-02")}
+			params["endDate"] = []string{until.Format("2006-01-02")}
+		}
+
+		body, _, err := i.request("/me/sport/activities", params)
+
+		fmt.Println(body.String())
+
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error loading runs: %s", err.Error())
 		}
@@ -164,20 +230,29 @@ func (i *Importer) Import() {
 			// log.Printf("Waiting on %d tasks", num)
 		}
 
-		// for _, run := range runs {
-		// 	log.Println(run.String())
-		// }
+		for _, run := range runs {
+			log.Println(run.String())
+		}
 
 		offset += inc
 	}
 
 	log.Printf("%d runs saved", len(runs))
 
-	js, err := json.Marshal(runs)
-	if err == nil {
-		fmt.Println(string(js))
-	} else {
-		fmt.Println(err)
+	js, err := json.Marshal(runFile{
+		Runs:    runs,
+		Updated: time.Now(),
+	})
+
+	file_write, err := os.OpenFile(i.OutputFile, os.O_CREATE+os.O_WRONLY+os.O_TRUNC, 0644)
+	if err != nil {
+		log.Printf("Error opening %s for writing: %s", i.OutputFile, err)
+	}
+	defer file_write.Close()
+
+	_, err = file_write.Write(js)
+	if err != nil {
+		log.Println("Error writing results to file")
 	}
 }
 
@@ -198,12 +273,30 @@ func (i *Importer) request(query string, params url.Values) (*bytes.Buffer, *htt
 
 	resp, err := i.client.Do(req)
 	if err != nil {
-		fmt.Println(err)
+		log.Print("Error executing request %s: %s", query, err)
 		return nil, resp, err
 	}
 
 	body := new(bytes.Buffer)
 	body.ReadFrom(resp.Body)
+
+	err_container := struct {
+		Fault struct {
+			Message string `json:"faultstring"`
+			Details struct {
+				Code string `json:"errorcode"`
+			} `json:"detail"`
+		} `json:"fault"`
+	}{}
+
+	err = json.Unmarshal(body.Bytes(), &err_container)
+	if err == nil {
+		if err_container.Fault.Details.Code == "policies.ratelimit.QuotaViolation" {
+			log.Println("Request hit quota, sleeping for an hour")
+			time.Sleep(60 * time.Minute)
+			return i.request(query, params)
+		}
+	}
 
 	return body, resp, err
 }
