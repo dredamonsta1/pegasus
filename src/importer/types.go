@@ -47,6 +47,10 @@ type Waypoint struct {
 	Elevation float64
 }
 
+type RunSlice []Run
+
+type ByStartTime RunSlice
+
 type Distance float64
 
 func (d Distance) Kilometers() float64 {
@@ -127,4 +131,16 @@ func (r Run) Speed() float64 {
 
 func (r Run) SpeedMi() float64 {
 	return float64(r.Distance.Miles()) / (float64(r.Duration) / (1e9 * 60 * 60))
+}
+
+func (r ByStartTime) Len() int {
+	return len(r)
+}
+
+func (r ByStartTime) Less(a, b int) bool {
+	return r[a].StartTime.Before(r[b].StartTime)
+}
+
+func (r ByStartTime) Swap(a, b int) {
+	r[a], r[b] = r[b], r[a]
 }

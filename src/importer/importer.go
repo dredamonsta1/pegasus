@@ -8,12 +8,16 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"time"
 )
 
 type runFile struct {
-	Runs    []Run     `json:"runs"`
-	Updated time.Time `json:"updated"`
+	Runs    []Run   `json:"runs"`
+	Version float64 `json:"version"`
+	Meta    struct {
+		Updated time.Time `json:"updated"`
+	} `json:"meta"`
 }
 
 type Importer struct {
@@ -64,7 +68,7 @@ func (i *Importer) loadFromFile() (input runFile, err error) {
 		return
 	}
 
-	log.Printf("%d runs loaded from input file %s (current as of %s)", len(input.Runs), i.OutputFile, input.Updated.Format("2006-01-02 15:04:05 -0700"))
+	log.Printf("%d runs loaded from input file %s (current as of %s)", len(input.Runs), i.OutputFile, input.Meta.Updated.Format("2006-01-02 15:04:05 -0700"))
 	return input, nil
 }
 
@@ -76,17 +80,17 @@ func (i *Importer) Import() {
 
 	since := time.Time{}
 	until := time.Time{}
-	if err == nil {
+	if err == nil && !input.Meta.Updated.IsZero() {
 		runs = input.Runs
-		since = input.Updated.AddDate(0, 0, -1)
+		since = input.Meta.Updated.AddDate(0, 0, -1)
 		until = time.Now().AddDate(0, 0, 1)
 	}
 
 	// debug
-	since = time.Now().AddDate(0, -1, 0)
-	until = time.Now()
+	// since = time.Now().AddDate(0, -1, 0)
+	// until = time.Now()
 
-	inc := 5
+	inc := 50
 	offset := 1
 
 	for {
@@ -102,8 +106,6 @@ func (i *Importer) Import() {
 
 		body, _, err := i.request("/me/sport/activities", params)
 
-		fmt.Println(body.String())
-
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error loading runs: %s", err.Error())
 		}
@@ -113,15 +115,15 @@ func (i *Importer) Import() {
 				ActivityID   string `json:"activityId"`
 				ActivityType string `json:"activityType"`
 				Status       string `json:"status"`
-				Device       string `json:"device"`
+				Device       string `json:"deviceType"`
 				StartTime    string `json:"startTime"`
 				Timezone     string `json:"activityTimeZone"`
 
 				MetricSummary struct {
-					Calories int64       `json:"calories"`
-					Fuel     int64       `json:"fuel"`
-					Distance float64     `json:"distance"`
-					Steps    int64       `json:"steps"`
+					Calories int64       `json:"calories,string"`
+					Fuel     int64       `json:"fuel,string"`
+					Distance float64     `json:"distance,string"`
+					Steps    int64       `json:"steps,string"`
 					Duration rawDuration `json:"duration"`
 				} `json:"metricSummary"`
 
@@ -230,18 +232,21 @@ func (i *Importer) Import() {
 			// log.Printf("Waiting on %d tasks", num)
 		}
 
-		for _, run := range runs {
-			log.Println(run.String())
-		}
-
 		offset += inc
 	}
 
-	log.Printf("%d runs saved", len(runs))
+	log.Printf("%d runs found", len(runs))
+
+	sort.Sort(sort.Reverse(ByStartTime(runs)))
 
 	js, err := json.Marshal(runFile{
-		Runs:    runs,
-		Updated: time.Now(),
+		Runs: runs,
+		Meta: struct {
+			Updated time.Time `json:"updated"`
+		}{
+			Updated: time.Now(),
+		},
+		Version: 1,
 	})
 
 	file_write, err := os.OpenFile(i.OutputFile, os.O_CREATE+os.O_WRONLY+os.O_TRUNC, 0644)
