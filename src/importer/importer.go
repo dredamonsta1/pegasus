@@ -75,20 +75,17 @@ func (i *Importer) loadFromFile() (input runFile, err error) {
 func (i *Importer) Import() {
 	log.Println("Starting import")
 
+	seen := make(map[string]bool)
+
 	input, err := i.loadFromFile()
 	runs := make([]Run, 0)
 
-	since := time.Time{}
-	until := time.Time{}
 	if err == nil && !input.Meta.Updated.IsZero() {
 		runs = input.Runs
-		since = input.Meta.Updated.AddDate(0, 0, -1)
-		until = time.Now().AddDate(0, 0, 1)
+		for _, run := range runs {
+			seen[run.ID] = true
+		}
 	}
-
-	// debug
-	// since = time.Now().AddDate(0, -1, 0)
-	// until = time.Now()
 
 	inc := 50
 	offset := 1
@@ -97,11 +94,6 @@ func (i *Importer) Import() {
 		params := url.Values{
 			"count":  []string{fmt.Sprintf(`%d`, inc)},
 			"offset": []string{fmt.Sprintf(`%d`, offset)},
-		}
-
-		if !since.IsZero() {
-			params["startDate"] = []string{since.Format("2006-01-02")}
-			params["endDate"] = []string{until.Format("2006-01-02")}
 		}
 
 		body, _, err := i.request("/me/sport/activities", params)
@@ -163,6 +155,11 @@ func (i *Importer) Import() {
 					Tags: []Tag{},
 				}
 
+				// if we've already seen this run, no need to update it again
+				if _, exists := seen[run.ID]; exists {
+					continue
+				}
+
 				st, err := rawTimestamp{v.StartTime, v.Timezone}.Time("America/New_York")
 				if err == nil {
 					run.StartTime = st
@@ -222,6 +219,7 @@ func (i *Importer) Import() {
 					}
 
 					runs = append(runs, run)
+					seen[run.ID] = true
 					num -= 1
 				}(run)
 			}
