@@ -247,6 +247,9 @@ func (i *Importer) Import() {
 		},
 		Version: 1,
 	})
+	if err != nil {
+		log.Printf("Error marshaling JSON for output: %s", err)
+	}
 
 	file_write, err := os.OpenFile(i.OutputFile, os.O_CREATE+os.O_WRONLY+os.O_TRUNC, 0644)
 	if err != nil {

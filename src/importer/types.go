@@ -39,7 +39,7 @@ type GPS struct {
 	ElevationGain   float64       `json:"elevationGain"`
 	Interval        time.Duration `json:"interval"`
 	Waypoints       []Waypoint    `json:"waypoints"`
-	WaypointAverage Waypoint      `json:"waypointAverage"`
+	WaypointAverage Waypoint      `json:"waypointAverage,omitempty"`
 }
 
 type Waypoint struct {
@@ -146,17 +146,19 @@ func (r ByStartTime) Swap(a, b int) {
 	r[a], r[b] = r[b], r[a]
 }
 
-func (g GPS) GetWaypointAverage() Waypoint {
-	sum := Waypoint{}
-	for _, w := range g.Waypoints {
-		sum.Latitude += w.Latitude
-		sum.Longitude += w.Longitude
-		sum.Elevation += w.Elevation
-	}
+func (g GPS) GetWaypointAverage() (sum Waypoint) {
 
-	sum.Latitude /= float64(len(g.Waypoints))
-	sum.Longitude /= float64(len(g.Waypoints))
-	sum.Elevation /= float64(len(g.Waypoints))
+	if cnt := len(g.Waypoints); cnt > 0 {
+		for _, w := range g.Waypoints {
+			sum.Latitude += w.Latitude
+			sum.Longitude += w.Longitude
+			sum.Elevation += w.Elevation
+		}
+
+		sum.Latitude /= float64(cnt)
+		sum.Longitude /= float64(cnt)
+		sum.Elevation /= float64(cnt)
+	}
 
 	return sum
 }
