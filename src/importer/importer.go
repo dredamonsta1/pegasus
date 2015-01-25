@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-type runFile struct {
+type RunFile struct {
 	Runs    []Run   `json:"runs"`
 	Version float64 `json:"version"`
 	Meta    struct {
@@ -39,7 +39,7 @@ func New(app_id string, access_token string, filename string) Importer {
 	return i
 }
 
-func (i *Importer) loadFromFile() (input runFile, err error) {
+func (i *Importer) LoadFromFile() (input RunFile, err error) {
 	file_read, err := os.Open(i.OutputFile)
 	if err != nil {
 		log.Printf("Error opening output file %s: %s", i.OutputFile, err)
@@ -77,7 +77,7 @@ func (i *Importer) Import() {
 
 	seen := make(map[string]bool)
 
-	input, err := i.loadFromFile()
+	input, err := i.LoadFromFile()
 	runs := make([]Run, 0)
 
 	if err == nil && !input.Meta.Updated.IsZero() {
@@ -216,6 +216,7 @@ func (i *Importer) Import() {
 							})
 						}
 						run.GPS.Waypoints = waypoints
+						run.GPS.WaypointAverage = run.GPS.GetWaypointAverage()
 					}
 
 					runs = append(runs, run)
@@ -237,7 +238,7 @@ func (i *Importer) Import() {
 
 	sort.Sort(sort.Reverse(ByStartTime(runs)))
 
-	js, err := json.Marshal(runFile{
+	js, err := json.Marshal(RunFile{
 		Runs: runs,
 		Meta: struct {
 			Updated time.Time `json:"updated"`

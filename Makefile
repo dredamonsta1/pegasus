@@ -14,6 +14,7 @@ define build
 	@echo 'Building...'
 
 	go install pegasus
+	go install analysis
 endef
 
 dev:
