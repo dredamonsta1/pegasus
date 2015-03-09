@@ -14,7 +14,7 @@ define build
 	@echo 'Building...'
 
 	go install pegasus
-	go install analysis
+	go install pegasus-web
 endef
 
 dev:
@@ -31,3 +31,6 @@ setup:
 	@echo 'Getting dependencies...'
 	@echo '  github.com/jimmysawczuk/go-config'
 	@go get -u github.com/jimmysawczuk/go-config
+
+	@echo '  github.com/gin-gonic/gin'
+	@go get -u github.com/gin-gonic/gin
