@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title></title>
+	<script type="text/javascript" src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAPyzoYR2u7EDCFGxwPh20PkzI3KYjsuDY"></script>
+	<script type="text/javascript" src="http://underscorejs.org/underscore-min.js"></script>
+	<script type="text/javascript" src="http://code.jquery.com/jquery-2.1.3.min.js"></script>
+</head>
+<body>
+	<div id="map-canvas" style="position: absolute; left: 0px; right: 0px; top: 0px; bottom: 0px;"></div>
+
+
+	<script type="text/javascript">
+		var mapOptions = {
+			center: new google.maps.LatLng(34.019945, -80.959479),
+			zoom: 13,
+			mapTypeId: google.maps.MapTypeId.HYBRID
+		};
+
+		var map = new google.maps.Map(document.getElementById("map-canvas"), mapOptions);
+		var circles = [];
+
+		var bounds;
+
+		function render(heatmap)
+		{
+			_.each(circles, function(circle)
+			{
+				circle.setMap(null);
+			});
+
+			circles = [];
+
+			_.each(heatmap, function(point)
+			{
+				var circle = new google.maps.Circle({
+					strokeColor: '#000000',
+					strokeOpacity: 0,
+					strokeWeight: 0,
+					fillColor: '#ff0000',
+					fillOpacity: 1, //point.index,
+					map: map,
+					center: new google.maps.LatLng(point.lat, point.lng),
+					radius: 5e5 / Math.pow(2, map.getZoom())
+				});
+
+				circles.push(circle);
+			});
+		}
+
+		function setBounds()
+		{
+			if (bounds == map.getBounds())
+			{
+				return;
+			}
+
+			bounds = map.getBounds();
+
+			var params = {
+				bounds: {
+					ne: { lat: bounds.getNorthEast().lat(), lng: bounds.getNorthEast().lng() },
+					sw: { lat: bounds.getSouthWest().lat(), lng: bounds.getSouthWest().lng() }
+				}
+			};
+
+			console.log("setting bounds", params);
+			var xhr = $.get("/api/v1/heatmap", params, function(response)
+			{
+				render(response);
+			}, 'json');
+
+			return xhr;
+		}
+
+		var lookup_timer = {
+			trigger: function()
+			{
+				setBounds();
+				delete this.timeoutID;
+			},
+
+			cancel: function()
+			{
+				if (typeof this.timeoutID == "number")
+				{
+					window.clearTimeout(this.timeoutID);
+					delete this.timeoutID;
+				}
+			},
+
+			setup: function(timeout)
+			{
+				this.cancel();
+				this.timeout = timeout;
+				this.timeoutID = window.setTimeout(this.trigger, this.timeout);
+			}
+		};
+
+		map.addListener('idle', setBounds);
+		map.addListener('bounds_changed', function()
+		{
+			lookup_timer.setup(3000);
+		});
+	</script>
+</body>
+</html>

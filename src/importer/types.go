@@ -26,7 +26,7 @@ type Run struct {
 	Duration time.Duration `json:"duration"`
 
 	Tags []Tag `json:"tags"`
-	GPS  GPS   `json:"gps"`
+	GPS  GPS   `json:"gps,omitempty"`
 }
 
 type Tag struct {
@@ -51,6 +51,8 @@ type Waypoint struct {
 type RunSlice []Run
 
 type ByStartTime RunSlice
+
+type WithoutGPS RunSlice
 
 type Distance float64
 
@@ -161,4 +163,12 @@ func (g GPS) GetWaypointAverage() (sum Waypoint) {
 	}
 
 	return sum
+}
+
+func (g GPS) MarshalJSON() ([]byte, error) {
+	if len(g.Waypoints) == 0 {
+		return json.Marshal(nil)
+	} else {
+		return json.Marshal(g)
+	}
 }
