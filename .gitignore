@@ -1,6 +1,8 @@
 bin/
 pkg/
 src/github.com/
+src/golang.org/
+src/gopkg.in/
 REVISION.json
 config.json
 output.json
