@@ -169,6 +169,19 @@ func (g GPS) MarshalJSON() ([]byte, error) {
 	if len(g.Waypoints) == 0 {
 		return json.Marshal(nil)
 	} else {
-		return json.Marshal(g)
+		j := struct {
+			ElevationLoss   float64       `json:"elevationLoss"`
+			ElevationGain   float64       `json:"elevationGain"`
+			Interval        time.Duration `json:"interval"`
+			Waypoints       []Waypoint    `json:"waypoints"`
+			WaypointAverage Waypoint      `json:"waypointAverage,omitempty"`
+		}{
+			ElevationLoss:   g.ElevationLoss,
+			ElevationGain:   g.ElevationGain,
+			Interval:        g.Interval,
+			Waypoints:       g.Waypoints,
+			WaypointAverage: g.WaypointAverage,
+		}
+		return json.Marshal(j)
 	}
 }
