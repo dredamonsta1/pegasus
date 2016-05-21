@@ -14,7 +14,7 @@ define build
 	@echo 'Building...'
 
 	go install pegasus
-	go install pegasus-web
+	go install pegasus-exporter
 endef
 
 dev:

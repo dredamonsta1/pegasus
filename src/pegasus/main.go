@@ -7,8 +7,8 @@ import (
 )
 
 func init() {
-	config.Add(config.String("api-secret", "", "Nike+ API secret", true))
-	config.Add(config.String("filename", "output.json", "Filename to read/write from", true))
+	config.Add(config.String("api-secret", "", "Nike+ API secret").Exportable(true))
+	config.Add(config.String("filename", "output.json", "Filename to read/write from").Exportable(true))
 	config.Build()
 }
 
